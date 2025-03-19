@@ -1,102 +1,6 @@
-import axios from "axios";
-import { ethers } from "ethers";
-import inquirer from "inquirer";
-import chalk from "chalk";
 
-const providerUrl =
-  "https://eth-mainnet.g.alchemy.com/v2/WMk4zoR-oKpUU5LYitsb1weZAASeAiti";
-const provider = new ethers.providers.JsonRpcProvider(providerUrl);
+const recipients = [];
 
-const TORN_CASH_ROUTER = "0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b";
-const TORN_ADDRESS_100ETH = "0xA160cdAB225685dA1d56aa342Ad8841c3b53f291";
-const TORN_ADDRESS_10ETH = "0x910Cbd523D972eb0a6f4cAe4618aD62622b39DbF";
-const TORN_ADDRESS_1ETH = "0x47CE0C6eD5B0Ce3d3A51fdb1C52DC66a7c3c2936";
-const TORN_ADDRESS_01ETH = "0x12D66f87A04A9E220743712cE6d9bB1B5616B8Fc";
-const contractABI = [
-    {
-      "inputs": [
-        {"internalType":"address","name":"_token","type":"address"},
-        {"internalType":"bytes32","name":"_commitment","type":"bytes32"},
-        {"internalType":"uint32","name":"_index","type":"uint32"}
-      ],
-      "name":"deposit",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-    },
-    {
-      "inputs": [
-        {"internalType":"address","name":"_tornado","type":"address"},
-        {"internalType":"bytes","name":"_proof","type":"bytes"},
-        {"internalType":"bytes32","name":"_root","type":"bytes32"},
-        {"internalType":"bytes32","name":"_nullifierHash","type":"bytes32"},
-        {"internalType":"address","name":"_recipient","type":"address"},
-        {"internalType":"address","name":"_relayer","type":"address"},
-        {"internalType":"uint256","name":"_fee","type":"uint256"},
-        {"internalType":"uint256","name":"_refund","type":"uint256"}
-      ],
-      "name":"withdraw",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-    }
-  ];
-  const recipients = [];
-
-const checkAddressAgainstAML = async (cryptoAddress) => {
-  try {
-    const url = `https://monetory.io/api/v2/crypto_address_check?crypto_address=${cryptoAddress}`;
-    const response = await axios.get(url, {
-      headers: { "user-agent": "bob" },
-    });
-    if (response.data) {
-      return response.data.is_ok;
-    }
-    return null;
-  } catch (error) {
-    console.error(chalk.red(`AML Check Failed for ${cryptoAddress}:`), error.message);
-    return null;
-  }
-};
-
-const identifyDemixedWithdrawals = async (withdrawals) => {
-  const suspiciousWithdrawals = [];
-
-  for (const withdrawal of withdrawals) {
-    const isClean = await checkAddressAgainstAML(withdrawal);
-    if (isClean === false) {
-      suspiciousWithdrawals.push(withdrawal);
-    }
-  }
-
-  return suspiciousWithdrawals;
-};
-
-const retrieveDepositDetails = async (depositTxHash) => {
-  try {
-    const tx = await provider.getTransaction(depositTxHash);
-    if (!tx) {
-      throw new Error(`Transaction not found: ${depositTxHash}`);
-    }
-
-    const receipt = await provider.getTransactionReceipt(depositTxHash);
-    const block = await provider.getBlock(receipt.blockNumber);
-
-    const gasFee = receipt.gasUsed.mul(tx.gasPrice);
-
-    return {
-      from: tx.from,
-      to: tx.to,
-      value: tx.value,
-      gasFee: gasFee,
-      blockNumber: receipt.blockNumber,
-      blockTimestamp: block.timestamp,
-    };
-  } catch (error) {
-    console.error(chalk.red("Error fetching deposit details:"), error);
-    return null;
-  }
-};
 
 const extractRecipientFromTransaction = async (hash) => {
   try {
@@ -221,25 +125,6 @@ const analyzeTornadoCashDeposit = async (depositHash) => {
     );
     return [];
   }
-};
-
-const askForDepositHash = async () => {
-  const questions = [
-    {
-      type: "input",
-      name: "depositHash",
-      message: chalk.green("Enter the deposit transaction hash:"),
-      validate: (value) => {
-        if (value.length !== 66 || !value.startsWith("0x")) {
-          return "Please enter a valid transaction hash.";
-        }
-        return true;
-      },
-    },
-  ];
-
-  const answer = await inquirer.prompt(questions);
-  return answer.depositHash;
 };
 
 const main = async () => {
