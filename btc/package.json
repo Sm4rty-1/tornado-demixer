@@ -1,0 +1,27 @@
+{
+  "devDependencies": {
+    "eslint": "^9.15.0",
+    "typescript": "^5.6.3"
+  },
+  "scripts": {},
+  "dependencies": {
+    "@scure/base": "^1.2.1",
+    "axios": "^1.7.8",
+    "bech32": "^2.0.0",
+    "bip38": "^3.1.1",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^4.0.5",
+    "bs58": "^6.0.0",
+    "bs58check": "^4.0.0",
+    "buffer": "^6.0.3",
+    "ecpair": "^3.0.0-rc.0",
+    "elliptic": "^6.6.1",
+    "ethers": "^5.7.0",
+    "fs": "^0.0.1-security",
+    "js-sha256": "^0.11.0",
+    "ripemd160": "^2.0.2",
+    "simple-crypto-js": "^3.0.1",
+    "sjcl": "^1.0.8",
+    "tiny-secp256k1": "^2.2.3"
+  }
+}
