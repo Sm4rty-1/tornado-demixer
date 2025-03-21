@@ -2,60 +2,211 @@ import axios from "axios";
 import { ethers } from "ethers";
 import inquirer from "inquirer";
 import chalk from "chalk";
+import {
+  providerUrl,
+  contractABI,
+  TORN_ADDRESS_01ETH,
+  TORN_ADDRESS_1ETH,
+  TORN_ADDRESS_10ETH,
+  TORN_ADDRESS_100ETH,
+  EXCLUDED_ADDRESSES
+} from "./const.js";
+import { Alchemy, Network } from "alchemy-sdk";
+const settings = {
+  apiKey: "pd0Qv7635Nc0SB7kyAsE4GbxSDwVFqRR", // Replace with your Alchemy API Key.
+  network: Network.ETH_MAINNET, // Replace with your network.
+};
+const alchemy = new Alchemy(settings);
 
-const providerUrl =
-  "https://eth-mainnet.g.alchemy.com/v2/WMk4zoR-oKpUU5LYitsb1weZAASeAiti";
-const provider = new ethers.providers.JsonRpcProvider(providerUrl);
+export const provider = new ethers.providers.JsonRpcProvider(providerUrl);
+export const retrieveDepositDetails = async (depositTxHash) => {
+  try {
+    const tx = await provider.getTransaction(depositTxHash);
+    if (!tx) {
+      throw new Error(`Transaction not found: ${depositTxHash}`);
+    }
 
-  /*  FILTERS
-1. check against AML
-2. compare for deposit txn gas price and withdrawl txns gas price.
-3. 
+    const receipt = await provider.getTransactionReceipt(depositTxHash);
+    const block = await provider.getBlock(receipt.blockNumber);
 
+    const gasFee = receipt.gasUsed.mul(tx.gasPrice);
 
-For Multi Asset?
-1. if multiple deposits hashes are given, then check for if the same amount of withdrawl is made by the same ens. 
+    return {
+      from: tx.from,
+      to: tx.to,
+      value: tx.value,
+      gasFee: gasFee,
+      blockNumber: receipt.blockNumber,
+      blockTimestamp: block.timestamp
+    };
+  } catch (error) {
+    console.error(chalk.red("Error fetching deposit details:"), error);
+    return null;
+  }
+};
 
-ask for upto blockNumber for limiting or if none passed in then just use block.timestamp. 
+export const askForDepositDetails = async () => {
+  const provider = new ethers.providers.JsonRpcProvider(providerUrl);
 
+  const questions = [
+    {
+      type: "input",
+      name: "transactionHash",
+      message: chalk.green("Enter the deposit transaction hash:"),
+      default:
+        "0xa62f69b29b866307afd4ea5b930df39c44009c842c4b61da0e80bbb7e33fa105",
+      validate: (value) => {
+        if (value.length !== 66 || !value.startsWith("0x")) {
+          return "Please enter a valid transaction hash.";
+        }
+        return true;
+      },
+    },
+    {
+      type: "input",
+      name: "numberOfTransactions",
+      message: chalk.green(
+        "Enter the number of deposit transactions with the same amount (default is 1):"
+      ),
+      default: 1,
+      validate: (value) => {
+        const numValue = parseInt(value);
+        if (isNaN(numValue) || numValue < 1) {
+          return "Please enter a valid number greater than or equal to 1.";
+        }
+        return true;
+      },
+    },
+    {
+      type: "input",
+      name: "upToBlockNumber",
+      message: chalk.green(
+        "Enter the block number to search up to (default is latest):"
+      ),
+      default: "latest",
+      validate: (value) => {
+        if (!/^\d+$/.test(value) && value !== "latest") {
+          return "Please enter a valid block number or 'latest'.";
+        }
+        return true;
+      },
+    },
+  ];
 
-BASIC FILTER:
-Filter Logic 1 (AML Check)
-Filter Logic 2 (Time checking; -2, +2 hours)
-Filter Logic 3 
+  const answers = await inquirer.prompt(questions);
 
-Get Further transfer for each withdrawl address after Final list of wallets. 
-Get before wallet of user that deposited into TC. 
+  if (answers.upToBlockNumber === "latest") {
+    const latestBlockNumber = await provider.getBlockNumber();
+    answers.upToBlockNumber = Number(latestBlockNumber.toString());
+  }
+  return {
+    transactionHash: answers.transactionHash,
+    numberOfTransactions: parseInt(answers.numberOfTransactions),
+    upToBlockNumber: answers.upToBlockNumber,
+  };
+};
 
-Then Advanced Filter: 
- - Get txns of deposit wallet other than tc, and txns of withdrawl addresses other than withdrawl: 
- - Compare Deposit wallet past txns data with withdrawl wallet data: 
-    - Txns Position in Block
-    - RPC / Builder Used?
-    - Time when wallet is active
-    - Txn Type
-    - Gas fees
-        - Legacy (check gas % paid respective to that block base gas)
-        - EIP1559 (check max Gas and priority fee paid)
+export const getWithdrawlData = async (fromBlock, toBlock, depositAmount) => {
+  console.log(chalk.blue(`Fetching withdrawal transactions...`));
 
+  if (depositAmount == 1e17) {
+    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_01ETH);
+  } else if (depositAmount == 1e18) {
+    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_1ETH);
+  } else if (depositAmount == 10e18) {
+    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_10ETH);
+  } else if (depositAmount == 100e18) {
+    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_100ETH);
+  } else {
+    console.warn(chalk.yellow(`Unsupported deposit amount: ${depositAmount}`));
+    return [];
+  }
+};
 
+async function _fetchWithdrawalRecipients(
+  fromBlock,
+  toBlock,
+  tornadoCashAddress
+) {
+  const recipients = new Set();
+  const logs = await provider.getLogs({
+    address: tornadoCashAddress,
+    fromBlock: ethers.utils.hexValue(fromBlock),
+    toBlock: ethers.utils.hexValue(toBlock),
+    topics: [
+      "0xe9e508bad6d4c3227e881ca19068f099da81b5164dd6d62b2eaf1e8bc6c34931",
+    ],
+  });
 
-*/
+  for (const log of logs) {
+    const recipient = await extractRecipientFromTransaction(
+      log.transactionHash
+    );
+    if (recipient) {
+      // console.log(chalk.green(`Recipient found for transaction ${log.transactionHash}: ${recipient}`));
+      recipients.add(recipient);
+    } else {
+      // console.log(chalk.yellow(`No recipient found for transaction ${log.transactionHash}`));
+    }
+  }
+  console.log();
+  console.log(chalk.cyan(`Suspicious Recipients:`));
+  Array.from(recipients).forEach((recipient, index) => {
+    console.log(chalk.whiteBright(`${index + 1}. ${recipient}`));
+  });
+  return Array.from(recipients); // Convert Set back to Array for return
+}
 
-// check against AML:
-export const FILTER_1_AML_CHECK = async (address) => {
-    try {
-      const url = `https://monetory.io/api/v2/crypto_address_check?crypto_address=${address}`;
-      const response = await axios.get(url, {
-        headers: { "user-agent": "bob" },
-      });
-      if (response.data) {
-        return response.data.is_ok;
-      }
-      return null;
-    } catch (error) {
-      console.error(chalk.red(`AML Check Failed for ${cryptoAddress}:`), error.message);
+export const extractRecipientFromTransaction = async (hash) => {
+  try {
+    const iface = new ethers.utils.Interface(contractABI);
+    const transaction = await provider.getTransaction(hash);
+    if (!transaction) {
+      console.warn(chalk.yellow(`Transaction not found: ${hash}`));
       return null;
     }
-  };
+    const decodedData = iface.parseTransaction({ data: transaction.data });
+    // console.log(decodedData.args[4]);
+    return decodedData.args[4];
+  } catch (error) {
+    // console.error(chalk.red(`Error decoding transaction ${hash}:`), error);
+    return null;
+  }
+};
 
+
+export const getAllTransactions = async (walletAddress) => {
+  console.log(chalk.blue(`Fetching all transactions for wallet: ${walletAddress}`));
+
+  try {
+    const response = await alchemy.core.getAssetTransfers({
+      fromAddress: walletAddress,
+      category: ["external", "internal", "erc20", "erc721", "erc1155"],
+      order: "asc", // Fetch transactions in ascending order
+    });
+
+    if (response.transfers.length === 0) {
+      console.log(chalk.yellow(`No transactions found for wallet: ${walletAddress}`));
+      return null;
+    }
+
+    // Filter out transactions sent to excluded addresses
+    const validTransactions = response.transfers.filter(
+      (txn) => !EXCLUDED_ADDRESSES.includes(txn.to)
+    );
+
+    if (validTransactions.length === 0) {
+      console.log(chalk.yellow(`No valid transactions found for wallet: ${walletAddress}`));
+      return null;
+    }
+
+    // Get the latest valid transaction (last in the sorted list)
+    const latestTransaction = validTransactions[validTransactions.length - 1];
+    console.log(chalk.green(`Latest valid transaction hash for wallet: ${walletAddress} is ${latestTransaction.hash}`));
+
+    return latestTransaction.hash; // Return the hash of the latest valid transaction
+  } catch (error) {
+    console.error(chalk.red(`Error fetching transactions for wallet: ${walletAddress}`), error);
+    return null;
+  }
+};
