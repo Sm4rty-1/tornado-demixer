@@ -19,7 +19,8 @@ const settings = {
 const alchemy = new Alchemy(settings);
 
 export const provider = new ethers.providers.JsonRpcProvider(providerUrl);
-export const retrieveDepositDetails = async (depositTxHash) => {
+
+export const getTxnData = async (depositTxHash) => {
   try {
     const tx = await provider.getTransaction(depositTxHash);
     if (!tx) {
@@ -32,15 +33,28 @@ export const retrieveDepositDetails = async (depositTxHash) => {
     const gasFee = receipt.gasUsed.mul(tx.gasPrice);
 
     return {
+      transactionHash: tx.hash,
       from: tx.from,
       to: tx.to,
-      value: tx.value,
-      gasFee: gasFee,
+      value: tx.value.toString(),
+      type: tx.type,
+      gasPrice: tx.gasPrice.toString(),
+      gasLimit: tx.gasLimit.toString(),
+      gasUsed: receipt.gasUsed.toString(),
+      gasFee: gasFee.toString(),
+      nonce: tx.nonce,
+      data: tx.data,
+      chainId: tx.chainId,
       blockNumber: receipt.blockNumber,
-      blockTimestamp: block.timestamp
+      blockHash: receipt.blockHash,
+      blockTimestamp: block.timestamp,
+      miner: block.miner,
+      transactionIndex: receipt.transactionIndex,
+      logs: receipt.logs,
+      status: receipt.status,
     };
   } catch (error) {
-    console.error(chalk.red("Error fetching deposit details:"), error);
+    console.error(chalk.red("Error fetching transaction details:"), error);
     return null;
   }
 };
@@ -175,38 +189,40 @@ export const extractRecipientFromTransaction = async (hash) => {
 };
 
 
-export const getAllTransactions = async (walletAddress) => {
+export const getAllTransactions = async (walletAddress, excludedAddresses = EXCLUDED_ADDRESSES) => {
   console.log(chalk.blue(`Fetching all transactions for wallet: ${walletAddress}`));
 
   try {
     const response = await alchemy.core.getAssetTransfers({
       fromAddress: walletAddress,
       category: ["external", "internal", "erc20", "erc721", "erc1155"],
-      order: "asc", // Fetch transactions in ascending order
+      order: "asc",
     });
 
     if (response.transfers.length === 0) {
       console.log(chalk.yellow(`No transactions found for wallet: ${walletAddress}`));
-      return null;
+      return [];
     }
 
-    // Filter out transactions sent to excluded addresses
     const validTransactions = response.transfers.filter(
-      (txn) => !EXCLUDED_ADDRESSES.includes(txn.to)
+      (txn) => !excludedAddresses.includes(txn.to)
     );
 
-    if (validTransactions.length === 0) {
-      console.log(chalk.yellow(`No valid transactions found for wallet: ${walletAddress}`));
-      return null;
-    }
-
-    // Get the latest valid transaction (last in the sorted list)
-    const latestTransaction = validTransactions[validTransactions.length - 1];
-    console.log(chalk.green(`Latest valid transaction hash for wallet: ${walletAddress} is ${latestTransaction.hash}`));
-
-    return latestTransaction.hash; // Return the hash of the latest valid transaction
+    return validTransactions.map((txn) => txn.hash);
   } catch (error) {
     console.error(chalk.red(`Error fetching transactions for wallet: ${walletAddress}`), error);
+    return [];
+  }
+};
+
+export const getTransactionPositionInBlock = async (txnHash) => {
+  try {
+    const txn = await provider.getTransaction(txnHash);
+    if (!txn) return console.log(chalk.yellow(`Transaction not found: ${txnHash}`)), null;
+    // console.log(chalk.green(`Transaction ${txnHash} is at position ${txn.transactionIndex} in block ${txn.blockNumber}.`));
+    return txn.transactionIndex;
+  } catch (error) {
+    console.error(chalk.red(`Error fetching transaction: ${txnHash}`), error);
     return null;
   }
 };

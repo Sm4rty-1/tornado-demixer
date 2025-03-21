@@ -1,38 +1,47 @@
-import axios from "axios";
-import { ethers } from "ethers";
-import inquirer from "inquirer";
 import chalk from "chalk";
 import {
   askForDepositDetails,
   getWithdrawlData,
-  retrieveDepositDetails,
+  getTxnData,
   getAllTransactions,
   provider,
 } from "./utils.js";
+import { FILTER_1_AML_CHECK, FILTER_2_TIME_CHECK, AdvancedFilter } from "./filter.js";
 
 // Main function
 const main = async () => {
-  // fetch deposit details..
   const inputData = await askForDepositDetails();
+  const depositData = await getTxnData(inputData.transactionHash);
 
-  // get Depositer Details..
-  const data = await retrieveDepositDetails(inputData.transactionHash);
+  const depositerTxns = await getAllTransactions(depositData.from);
+  console.log("Depositer Other Transactions:", depositerTxns);
 
-  //
-  const depositerTXN = await getAllTransactions(data.from);
-  console.log("Depositer Other Transaction:", depositerTXN);
-
-  const withdrawlAddreses = await getWithdrawlData(
-    data.blockNumber,
+  const withdrawlAddresses = await getWithdrawlData(
+    depositData.blockNumber,
     inputData.upToBlockNumber,
-    data.value
+    depositData.value
   );
 
-  // for each withdrawl address get the txns..
-  for (const address of withdrawlAddreses) {
-    const withdrawlTXN = await getAllTransactions(address, 2000);
-    console.log("Transactions Found:", withdrawlTXN);
+  const suspiciousAddresses = [];
+
+  for (const address of withdrawlAddresses) {
+    const withdrawlTxns = await getAllTransactions(address);
+
+    for (const withdrawlTxn of withdrawlTxns) {
+      const amlCheck = await FILTER_1_AML_CHECK(address);
+      const timeCheck = await FILTER_2_TIME_CHECK(inputData.transactionHash, withdrawlTxn);
+      const advancedCheck = await AdvancedFilter(inputData.transactionHash, withdrawlTxn);
+
+      if (amlCheck && timeCheck && advancedCheck) {
+        suspiciousAddresses.push(address);
+      }
+    }
   }
+
+  console.log(chalk.cyan("Suspicious Addresses:"));
+  suspiciousAddresses.forEach((address, index) => {
+    console.log(chalk.whiteBright(`${index + 1}. ${address}`));
+  });
 };
 
 main();
