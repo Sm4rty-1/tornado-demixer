@@ -1,3 +1,6 @@
+import axios from "axios";
+import { ethers } from "ethers";
+import inquirer from "inquirer";
 import chalk from "chalk";
 import {
   askForDepositDetails,
@@ -6,42 +9,42 @@ import {
   getAllTransactions,
   provider,
 } from "./utils.js";
-import { FILTER_1_AML_CHECK, FILTER_2_TIME_CHECK, AdvancedFilter } from "./filter.js";
+import {
+  FILTER_1_AML_CHECK,
+  FILTER_2_TIME_CHECK,
+  AdvancedFilter,
+} from "./filter.js";
 
 // Main function
 const main = async () => {
+  // fetch deposit details..
   const inputData = await askForDepositDetails();
-  const depositData = await getTxnData(inputData.transactionHash);
 
-  const depositerTxns = await getAllTransactions(depositData.from);
-  console.log("Depositer Other Transactions:", depositerTxns);
+  // get Depositer Details..
+  const depositerData = await getTxnData(inputData.transactionHash);
 
-  const withdrawlAddresses = await getWithdrawlData(
-    depositData.blockNumber,
+  // get other transactions of depositer..
+  const depositerTXN = await getAllTransactions(depositerData.from);
+  console.log("Depositer Other Transaction:", depositerTXN);
+
+  // get all withdaw address. 
+  const withdrawlAddreses = await getWithdrawlData(
+    depositerData.blockNumber,
     inputData.upToBlockNumber,
-    depositData.value
+    depositerData.value
   );
 
-  const suspiciousAddresses = [];
-
-  for (const address of withdrawlAddresses) {
-    const withdrawlTxns = await getAllTransactions(address);
-
-    for (const withdrawlTxn of withdrawlTxns) {
-      const amlCheck = await FILTER_1_AML_CHECK(address);
-      const timeCheck = await FILTER_2_TIME_CHECK(inputData.transactionHash, withdrawlTxn);
-      const advancedCheck = await AdvancedFilter(inputData.transactionHash, withdrawlTxn);
-
-      if (amlCheck && timeCheck && advancedCheck) {
-        suspiciousAddresses.push(address);
-      }
-    }
+  // for each withdrawl address get the txns and store it. 
+  for (const address of withdrawlAddreses) {
+    const withdrawlTXN = await getAllTransactions(address, 2000);
+    console.log("Transactions Found:", withdrawlTXN);
   }
 
-  console.log(chalk.cyan("Suspicious Addresses:"));
-  suspiciousAddresses.forEach((address, index) => {
-    console.log(chalk.whiteBright(`${index + 1}. ${address}`));
-  });
+  // use depositer txn, and withdrawl txn to filter out the transactions.
+  // we will have final withdrawlAddreses after all the filters.
+  const finalWithdrawlAddreses = [];
+  
+
 };
 
 main();

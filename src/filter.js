@@ -2,7 +2,17 @@ import axios from "axios";
 import chalk from "chalk";
 import {getTransactionPositionInBlock, getTxnData} from "./utils.js";
 
-// check against AML:
+
+export const BasicFilter = async (depositTxnHash, withdrawTxnHash) => {
+  const depositorData = await getTxnData(depositTxnHash);
+  const withdrawData = await getTxnData(withdrawTxnHash);
+
+  FILTER_1_AML_CHECK(withdrawData.from);
+  FILTER_2_TIME_CHECK(depositorData,withdrawData);
+}
+
+
+// for each filter return either true or false... 
 export const FILTER_1_AML_CHECK = async (address) => {
   try {
     const url = `https://monetory.io/api/v2/crypto_address_check?crypto_address=${address}`;
@@ -22,10 +32,7 @@ export const FILTER_1_AML_CHECK = async (address) => {
   }
 };
 
-export const FILTER_2_TIME_CHECK = async (depositTxnHash, withdrawTxnHash) => {
-  const depositData = await getTxnData(depositTxnHash);
-  const withdrawData = await getTxnData(withdrawTxnHash);
-
+export const FILTER_2_TIME_CHECK = async (depositData, withdrawData) => {
   const depositTime = depositData.blockTimestamp;
   const withdrawTime = withdrawData.blockTimestamp;
 
@@ -34,6 +41,8 @@ export const FILTER_2_TIME_CHECK = async (depositTxnHash, withdrawTxnHash) => {
 
   return timeDifference <= allowedTimeRange;
 };
+
+
 
 export const AdvancedFilter = async (depositTxnHash, withdrawTxnHash) => {
   const depositorData = await getTxnData(depositTxnHash);

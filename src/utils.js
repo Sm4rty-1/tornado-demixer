@@ -195,7 +195,7 @@ export const getAllTransactions = async (walletAddress, excludedAddresses = EXCL
   try {
     const response = await alchemy.core.getAssetTransfers({
       fromAddress: walletAddress,
-      category: ["external", "internal", "erc20", "erc721", "erc1155"],
+      category: ["external", "erc20"],
       order: "asc",
     });
 
