@@ -1,4 +1,3 @@
-import axios from "axios";
 import { ethers } from "ethers";
 import inquirer from "inquirer";
 import chalk from "chalk";
@@ -9,9 +8,10 @@ import {
   TORN_ADDRESS_1ETH,
   TORN_ADDRESS_10ETH,
   TORN_ADDRESS_100ETH,
-  EXCLUDED_ADDRESSES
+  EXCLUDED_ADDRESSES,
 } from "./const.js";
 import { Alchemy, Network } from "alchemy-sdk";
+
 const settings = {
   apiKey: "pd0Qv7635Nc0SB7kyAsE4GbxSDwVFqRR", // Replace with your Alchemy API Key.
   network: Network.ETH_MAINNET, // Replace with your network.
@@ -54,7 +54,7 @@ export const getTxnData = async (depositTxHash) => {
       status: receipt.status,
     };
   } catch (error) {
-    console.error(chalk.red("Error fetching transaction details:"), error);
+    console.error(chalk.red("Error fetching transaction details:"));
     return null;
   }
 };
@@ -121,28 +121,22 @@ export const askForDepositDetails = async () => {
 };
 
 export const getWithdrawlData = async (fromBlock, toBlock, depositAmount) => {
-  console.log(chalk.blue(`Fetching withdrawal transactions...`));
+  console.log(chalk.blue(`Fetching withdrawal transactions...\n`));
 
+  let tornadoCashAddress;
   if (depositAmount == 1e17) {
-    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_01ETH);
+    tornadoCashAddress = TORN_ADDRESS_01ETH;
   } else if (depositAmount == 1e18) {
-    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_1ETH);
+    tornadoCashAddress = TORN_ADDRESS_1ETH;
   } else if (depositAmount == 10e18) {
-    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_10ETH);
+    tornadoCashAddress = TORN_ADDRESS_10ETH;
   } else if (depositAmount == 100e18) {
-    return _fetchWithdrawalRecipients(fromBlock, toBlock, TORN_ADDRESS_100ETH);
+    tornadoCashAddress = TORN_ADDRESS_100ETH;
   } else {
     console.warn(chalk.yellow(`Unsupported deposit amount: ${depositAmount}`));
     return [];
   }
-};
 
-async function _fetchWithdrawalRecipients(
-  fromBlock,
-  toBlock,
-  tornadoCashAddress
-) {
-  const recipients = new Set();
   const logs = await provider.getLogs({
     address: tornadoCashAddress,
     fromBlock: ethers.utils.hexValue(fromBlock),
@@ -152,24 +146,18 @@ async function _fetchWithdrawalRecipients(
     ],
   });
 
+  const withdrawalData = [];
   for (const log of logs) {
-    const recipient = await extractRecipientFromTransaction(
-      log.transactionHash
-    );
+    const recipient = await extractRecipientFromTransaction(log.transactionHash);
     if (recipient) {
-      // console.log(chalk.green(`Recipient found for transaction ${log.transactionHash}: ${recipient}`));
-      recipients.add(recipient);
-    } else {
-      // console.log(chalk.yellow(`No recipient found for transaction ${log.transactionHash}`));
+      withdrawalData.push({
+        recipient,
+        transactionHash: log.transactionHash,
+      });
     }
   }
-  console.log();
-  console.log(chalk.cyan(`Suspicious Recipients:`));
-  Array.from(recipients).forEach((recipient, index) => {
-    console.log(chalk.whiteBright(`${index + 1}. ${recipient}`));
-  });
-  return Array.from(recipients); // Convert Set back to Array for return
-}
+  return withdrawalData;
+};
 
 export const extractRecipientFromTransaction = async (hash) => {
   try {
@@ -180,38 +168,41 @@ export const extractRecipientFromTransaction = async (hash) => {
       return null;
     }
     const decodedData = iface.parseTransaction({ data: transaction.data });
-    // console.log(decodedData.args[4]);
     return decodedData.args[4];
   } catch (error) {
-    // console.error(chalk.red(`Error decoding transaction ${hash}:`), error);
     return null;
   }
 };
 
-
-export const getAllTransactions = async (walletAddress, excludedAddresses = EXCLUDED_ADDRESSES) => {
-  console.log(chalk.blue(`Fetching all transactions for wallet: ${walletAddress}`));
+export const getDepositerTransactions = async (walletAddress, excludedAddresses = EXCLUDED_ADDRESSES) => {
+  console.log(chalk.blue(`Fetching the latest transaction for wallet: ${walletAddress}`));
 
   try {
     const response = await alchemy.core.getAssetTransfers({
       fromAddress: walletAddress,
-      category: ["external", "erc20"],
-      order: "asc",
+      category: ["external", "internal", "erc20"],
+      order: "desc", // Fetch the latest transactions first
+      maxCount: 1, // Limit to the latest transaction
     });
 
     if (response.transfers.length === 0) {
       console.log(chalk.yellow(`No transactions found for wallet: ${walletAddress}`));
-      return [];
+      return null;
     }
 
-    const validTransactions = response.transfers.filter(
+    const latestTransaction = response.transfers.find(
       (txn) => !excludedAddresses.includes(txn.to)
     );
 
-    return validTransactions.map((txn) => txn.hash);
+    if (!latestTransaction) {
+      console.log(chalk.yellow(`No valid transactions found for wallet: ${walletAddress}`));
+      return null;
+    }
+
+    return latestTransaction.hash;
   } catch (error) {
     console.error(chalk.red(`Error fetching transactions for wallet: ${walletAddress}`), error);
-    return [];
+    return null;
   }
 };
 
@@ -219,7 +210,6 @@ export const getTransactionPositionInBlock = async (txnHash) => {
   try {
     const txn = await provider.getTransaction(txnHash);
     if (!txn) return console.log(chalk.yellow(`Transaction not found: ${txnHash}`)), null;
-    // console.log(chalk.green(`Transaction ${txnHash} is at position ${txn.transactionIndex} in block ${txn.blockNumber}.`));
     return txn.transactionIndex;
   } catch (error) {
     console.error(chalk.red(`Error fetching transaction: ${txnHash}`), error);
