@@ -212,7 +212,7 @@ export const getTransactionPositionInBlock = async (txnHash) => {
     if (!txn) return console.log(chalk.yellow(`Transaction not found: ${txnHash}`)), null;
     return txn.transactionIndex;
   } catch (error) {
-    console.error(chalk.red(`Error fetching transaction: ${txnHash}`), error);
+    // console.error(chalk.red(`Error fetching transaction: ${txnHash}`), error);
     return null;
   }
 };
