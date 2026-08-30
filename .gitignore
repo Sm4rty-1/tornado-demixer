@@ -1,0 +1,11 @@
+node_modules
+build
+npm-debug.log
+.env
+.DS_Store
+
+# research notes — contains third-party article text, kept local
+notes
+
+# working design notes, kept out of the published repo
+docs/
